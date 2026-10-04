@@ -125,8 +125,6 @@ cp .env.example .env
 
 Abre `.env` y reemplaza los valores de ejemplo por las claves, credenciales y configuraciones de tu entorno. Conserva los nombres de las variables que ya aparecen en `.env.example`.
 
-> **Importante:** no subas el archivo `.env` ni credenciales reales al repositorio. El archivo `.env.example` debe contener solo marcadores o valores de ejemplo, nunca secretos activos.
-
 ## Construcción y ejecución con Docker Compose
 
 Ejecuta los comandos desde la raíz del repositorio, en la misma carpeta donde se encuentra `docker-compose.yaml`.
@@ -171,7 +169,6 @@ Accede al frontend mediante la dirección y el puerto publicados en `docker-comp
 | `docker compose restart` | Reinicia los servicios. |
 | `docker compose down` | Detiene y elimina los contenedores y las redes creadas por Compose. |
 
-> `docker compose down` no elimina por sí solo los volúmenes persistentes. Evita borrar volúmenes sin comprobar antes si contienen datos que necesitas conservar.
 
 ## Reglas de negocio
 
