@@ -33,8 +33,6 @@
 - [Comandos útiles](#comandos-útiles)
 - [Reglas de negocio](#reglas-de-negocio)
 - [Alcance y roadmap](#alcance-y-roadmap)
-- [Seguridad](#seguridad)
-- [Licencia](#licencia)
 
 ## Descripción
 
