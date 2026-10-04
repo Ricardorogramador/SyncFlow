@@ -203,7 +203,6 @@ Las consideraciones anteriores describen requisitos y buenas prácticas; la impl
 
 ## Licencia
 
-Actualmente, el repositorio no declara una licencia. Por tanto, no debe asumirse que el código puede reutilizarse, modificarse o distribuirse libremente.
 ---
 
 <p align="center">
