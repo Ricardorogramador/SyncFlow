@@ -67,8 +67,6 @@ El frontend y el backend se encuentran en un mismo repositorio. Docker Compose c
 | Orquestación | Docker Compose | `docker-compose.yaml` |
 | Configuración local | Variables de entorno | `.env` y `.env.example` |
 
-Los logos de las tecnologías se muestran mediante badges de [Shields.io](https://shields.io/).
-
 ## Estructura del repositorio
 
 ```text
@@ -206,9 +204,6 @@ Las consideraciones anteriores describen requisitos y buenas prácticas; la impl
 ## Licencia
 
 Actualmente, el repositorio no declara una licencia. Por tanto, no debe asumirse que el código puede reutilizarse, modificarse o distribuirse libremente.
-
-Si deseas permitir esos usos, elige una licencia y añade el archivo correspondiente (por ejemplo, `LICENSE`) a la raíz del repositorio. Hasta entonces, esta sección debe considerarse pendiente de definición.
-
 ---
 
 <p align="center">
