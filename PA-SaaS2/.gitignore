@@ -1,0 +1,21 @@
+# Archivos compilados y empaquetados
+target/
+*.jar
+*.war
+*.class
+
+# Logs
+*.log
+
+# Entornos de desarrollo e IDEs
+.idea/
+*.iml
+.vscode/
+.DS_Store
+
+# Archivos de entorno y secretos (AQUÍ VAN LAS VARIABLES)
+.env
+*.properties.local
+
+# Configuración de tests excluida según requerimiento
+src/test/

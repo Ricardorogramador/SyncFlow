@@ -1,0 +1,7 @@
+# Ignorar el archivo de variables reales de Docker Compose
+.env
+
+# Ignorar configuraciones del IDE a nivel raíz
+.idea/
+.vscode/
+.DS_Store
