@@ -65,7 +65,7 @@ El frontend y el backend se encuentran en un mismo repositorio. Docker Compose c
 | Backend | Spring Boot | `PA-SaaS2/` |
 | Contenedores | Docker | Configuración del proyecto |
 | Orquestación | Docker Compose | `docker-compose.yaml` |
-| Configuración local | Variables de entorno | `.env` y `.env.example` |
+| Configuración local | Variables de entorno | `.env.example` |
 
 ## Estructura del repositorio
 
@@ -73,7 +73,6 @@ El frontend y el backend se encuentran en un mismo repositorio. Docker Compose c
 SyncFlow/
 ├── frontend-saas/        # Aplicación frontend con React
 ├── PA-SaaS2/             # Aplicación backend con Spring Boot
-├── .env                  # Variables de entorno locales (no publicar)
 ├── .env.example          # Plantilla de variables de entorno
 ├── .gitignore
 ├── docker-compose.yaml   # Construcción y ejecución de servicios
@@ -189,21 +188,6 @@ Como trabajo futuro se consideran:
 - Historial de pagos.
 - Mejoras para editar ocurrencias individuales de eventos recurrentes.
 - Integración completa con una pasarela de pagos.
-
-## Seguridad
-
-- Mantén las claves y credenciales fuera del control de versiones.
-- Usa `.env.example` para documentar las variables requeridas sin publicar secretos.
-- Valida los permisos en el backend, no únicamente en la interfaz.
-- Almacena las contraseñas mediante algoritmos seguros de hashing; nunca en texto plano.
-- Protege las sesiones y verifica la autenticidad de las operaciones relacionadas con pagos.
-- Limita la exposición de servicios internos y aplica controles de acceso adecuados.
-
-Las consideraciones anteriores describen requisitos y buenas prácticas; la implementación efectiva debe comprobarse en el código y en la configuración del entorno.
-
-## Licencia
-
----
 
 <p align="center">
   <strong>SyncFlow</strong><br>
