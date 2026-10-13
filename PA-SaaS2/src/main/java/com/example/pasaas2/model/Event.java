@@ -46,4 +46,10 @@ public class Event {
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
+
+    @OneToMany(mappedBy = "event", cascade = CascadeType.ALL, orphanRemoval = true)
+    private java.util.List<TimelineEntry> timelineEntries;
+
+    @OneToMany(mappedBy = "event", cascade = CascadeType.ALL, orphanRemoval = true)
+    private java.util.List<ChecklistItem> checklistItems;
 }

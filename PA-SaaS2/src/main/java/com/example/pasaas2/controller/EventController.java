@@ -75,4 +75,23 @@ public class EventController {
         EventRequest draft = eventService.previewEventFromText(request);
         return ResponseEntity.ok(ApiResponse.success("Borrador generado exitosamente", draft));
     }
+
+    @PostMapping("/{eventId}/timeline")
+    public ResponseEntity<ApiResponse<TimelineResponse>> addTimelineEntry(
+            @PathVariable UUID eventId,
+            @Valid @RequestBody com.example.pasaas2.dto.TimelineRequest request,
+            @AuthenticationPrincipal User currentUser) {
+
+        TimelineResponse response = eventService.addTimelineEntry(eventId, request, currentUser);
+        return ResponseEntity.ok(ApiResponse.success("Entrada agregada al contexto del evento", response));
+    }
+
+    @GetMapping("/{eventId}/timeline")
+    public ResponseEntity<ApiResponse<List<TimelineResponse>>> getTimeline(
+            @PathVariable UUID eventId,
+            @AuthenticationPrincipal User currentUser) {
+
+        List<TimelineResponse> timeline = eventService.getTimelineForEvent(eventId, currentUser);
+        return ResponseEntity.ok(ApiResponse.success("Contexto obtenido exitosamente", timeline));
+    }
 }

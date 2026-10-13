@@ -26,6 +26,7 @@ public class EventService {
     private final UserRepository userRepository;
     private final RecurrenceRuleRepository recurrenceRuleRepository;
     private final GeminiAiService geminiAiService;
+    private final com.example.pasaas2.repository.TimelineEntryRepository timelineEntryRepository;
 
     @Transactional
     public EventResponse createPersonalEvent(EventRequest request, User currentUser) {
@@ -216,5 +217,57 @@ public class EventService {
 
     public EventRequest previewEventFromText(EventPromptRequest request) {
         return geminiAiService.parseEventFromText(request.getPrompt());
+    }
+
+    @Transactional
+    public TimelineResponse addTimelineEntry(UUID eventId, TimelineRequest request, User currentUser) {
+        Event event = eventRepository.findById(eventId)
+                .orElseThrow(() -> new IllegalArgumentException("Evento no encontrado"));
+
+        boolean isCreator = event.getCreatedBy().getId().equals(currentUser.getId());
+        boolean isAssigned = eventAssignmentRepository.findByEventAndUser(event, currentUser).isPresent();
+
+        if (!isCreator && !isAssigned) {
+            throw new IllegalArgumentException("No tienes permisos para participar en este evento");
+        }
+
+        com.example.pasaas2.model.TimelineEntry entry = com.example.pasaas2.model.TimelineEntry.builder()
+                .event(event)
+                .author(currentUser)
+                .entryType(request.getEntryType())
+                .content(request.getContent())
+                .build();
+
+        timelineEntryRepository.save(entry);
+
+        return TimelineResponse.builder()
+                .id(entry.getId())
+                .content(entry.getContent())
+                .entryType(entry.getEntryType())
+                .authorName(currentUser.getName())
+                .createdAt(entry.getCreatedAt())
+                .build();
+    }
+
+    public List<TimelineResponse> getTimelineForEvent(UUID eventId, User currentUser) {
+        Event event = eventRepository.findById(eventId)
+                .orElseThrow(() -> new IllegalArgumentException("Evento no encontrado"));
+
+        boolean isCreator = event.getCreatedBy().getId().equals(currentUser.getId());
+        boolean isAssigned = eventAssignmentRepository.findByEventAndUser(event, currentUser).isPresent();
+
+        if (!isCreator && !isAssigned) {
+            throw new IllegalArgumentException("No tienes permisos para ver el contexto de este evento");
+        }
+
+        return timelineEntryRepository.findByEventOrderByCreatedAtDesc(event).stream()
+                .map(entry -> TimelineResponse.builder()
+                        .id(entry.getId())
+                        .content(entry.getContent())
+                        .entryType(entry.getEntryType())
+                        .authorName(entry.getAuthor().getName())
+                        .createdAt(entry.getCreatedAt())
+                        .build())
+                .toList();
     }
 }

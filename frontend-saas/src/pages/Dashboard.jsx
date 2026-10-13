@@ -8,6 +8,9 @@ import getDay from 'date-fns/getDay';
 import es from 'date-fns/locale/es';
 import api from '../services/api';
 
+// IMPORTACIÓN DEL LOGO (Asegúrate de que esté en la carpeta src/assets/)
+import logo from '../assets/SyncFlow.png';
+
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import '../styles/Dashboard.css';
 
@@ -19,9 +22,9 @@ const localizer = dateFnsLocalizer({
 export default function Dashboard() {
     const navigate = useNavigate();
 
-    const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+    // 1. Sidebar ahora inicia cerrado por defecto (false)
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [isDarkMode, setIsDarkMode] = useState(false);
-    const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
 
     const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 
@@ -34,6 +37,11 @@ export default function Dashboard() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isOrgModalOpen, setIsOrgModalOpen] = useState(false);
     const [isViewModalOpen, setIsViewModalOpen] = useState(false);
+
+    // Estados para el modal de Contexto
+    const [isTimelineModalOpen, setIsTimelineModalOpen] = useState(false);
+    const [timelineContent, setTimelineContent] = useState('');
+    const [timelineEntries, setTimelineEntries] = useState([]); // Array para mostrar el historial
 
     const [selectedEventInfo, setSelectedEventInfo] = useState(null);
     const [selectedEventId, setSelectedEventId] = useState(null);
@@ -56,7 +64,6 @@ export default function Dashboard() {
     const fetchEvents = async () => {
         try {
             const response = await api.get('/events');
-
             const baseEvents = (response.data.data || []).map(ev => ({
                 id: ev.id,
                 baseId: ev.id,
@@ -127,9 +134,7 @@ export default function Dashboard() {
         return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
     };
 
-    const getMinDateTime = () => {
-        return formatDateForInput(new Date());
-    };
+    const getMinDateTime = () => formatDateForInput(new Date());
 
     const formatDisplayDate = (start, end) => {
         if (!start || !end) return '';
@@ -152,7 +157,6 @@ export default function Dashboard() {
         if (start < new Date()) defaultStart = new Date();
 
         setStartTime(formatDateForInput(defaultStart));
-
         const end = new Date(defaultStart);
         end.setHours(end.getHours() + 1);
         setEndTime(formatDateForInput(end));
@@ -183,7 +187,6 @@ export default function Dashboard() {
         if (selectedEventInfo.recurrenceFrequency === 'DAILY') rec = 'Diaria';
         if (selectedEventInfo.recurrenceFrequency === 'WEEKLY') rec = 'Semanal';
         setRecurrence(rec);
-
         setIsModalOpen(true);
     };
 
@@ -202,7 +205,6 @@ export default function Dashboard() {
             setDescription(draft.description || '');
             setStartTime(draft.startTime || '');
             setEndTime(draft.endTime || '');
-
             setAssignee('');
             setRecurrence('Ninguna');
             setSelectedEventId(null);
@@ -258,7 +260,6 @@ export default function Dashboard() {
 
     const handleDeleteEvent = async () => {
         if (!window.confirm('¿Estás seguro de que deseas eliminar este evento?')) return;
-
         try {
             const idToDelete = selectedEventInfo ? selectedEventInfo.baseId : selectedEventId;
             await api.delete(`/events/${idToDelete}`);
@@ -268,6 +269,41 @@ export default function Dashboard() {
             fetchEvents();
         } catch (err) {
             showToast('No se pudo eliminar el evento', 'error');
+        }
+    };
+
+    // Función para Cargar el Timeline visualmente
+    const handleOpenTimeline = async () => {
+        setIsViewModalOpen(false);
+        setIsTimelineModalOpen(true);
+        setTimelineEntries([]);
+
+        try {
+            const response = await api.get(`/events/${selectedEventInfo.baseId}/timeline`);
+            setTimelineEntries(response.data.data || []);
+        } catch (error) {
+            console.error("Error al cargar el contexto", error);
+            // Si el backend aún no tiene esta ruta, mostramos array vacío silenciosamente
+        }
+    };
+
+    const handleAddTimelineEntry = async () => {
+        if (!timelineContent.trim()) return;
+        setIsSubmitting(true);
+
+        try {
+            await api.post(`/events/${selectedEventInfo.baseId}/timeline`, {
+                content: timelineContent,
+                entryType: 'COMMENT'
+            });
+            showToast('Evidencia agregada al contexto del evento', 'success');
+            setTimelineContent('');
+            handleOpenTimeline(); // Recargar la lista después de guardar
+        } catch (error) {
+            console.error('Error al guardar timeline:', error);
+            showToast('No se pudo guardar la evidencia', 'error');
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -281,76 +317,76 @@ export default function Dashboard() {
                 {toast.message}
             </div>
 
+            {/* BARRA LATERAL (SIDEBAR) ACTUALIZADA */}
             <aside className={`sidebar ${isSidebarOpen ? 'open' : 'closed'}`}>
-                <div className="sidebar-header">
-                    <div className="logo-mark"></div>
-                    {isSidebarOpen && <h2 className="brand-name">SyncFlow</h2>}
+                <div className="sidebar-header" style={{ padding: '20px 15px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    {/* Implementación de tu logo importado */}
+                    <img src={logo} alt="SyncFlow Logo" style={{ width: '35px', height: '35px', borderRadius: '8px', objectFit: 'cover' }} />
+                    {isSidebarOpen && <h2 className="brand-name" style={{ margin: 0, fontSize: '1.2rem' }}>SyncFlow Teams</h2>}
                 </div>
+
                 <nav className="sidebar-nav">
                     <button onClick={() => setIsOrgModalOpen(true)} className="nav-item active">
                         <span className="icon">🏢</span> {isSidebarOpen && 'Organización'}
                     </button>
+
+                    {/* Opciones de usuario movidas aquí */}
+                    <div style={{ margin: '15px 0', borderBottom: '1px solid #334155' }}></div>
+                    <button className="nav-item">
+                        <span className="icon">⚙️</span> {isSidebarOpen && 'Configuración'}
+                    </button>
+                    <button className="nav-item">
+                        <span className="icon">💳</span> {isSidebarOpen && 'Facturación'}
+                    </button>
                 </nav>
+
                 <div className="sidebar-footer">
+                    <button onClick={handleLogout} className="nav-item text-danger" style={{ width: '100%', textAlign: 'left', background: 'transparent', border: 'none', cursor: 'pointer', color: '#ef4444' }}>
+                        <span className="icon">🚪</span> {isSidebarOpen && 'Cerrar Sesión'}
+                    </button>
                     {isSidebarOpen && (
-                        <div className="sidebar-plan">
-                            <span className="plan-badge">Plan Free</span>
-                            <button className="upgrade-btn">Mejorar Plan</button>
+                        <div className="sidebar-plan" style={{ marginTop: '15px' }}>
+                            <span className="plan-badge">Plan Pro</span>
+                            <button className="upgrade-btn">Administrar Plan</button>
                         </div>
                     )}
                 </div>
             </aside>
 
             <main className="main-area">
+                {/* HEADER SUPERIOR LIMPIO Y MINIMALISTA */}
                 <header className="top-header">
                     <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="toggle-btn">☰</button>
-                    <div className="header-actions">
+                    <div className="header-actions" style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                        <span style={{ fontSize: '14px', color: isDarkMode ? '#94a3b8' : '#64748b', fontWeight: '500' }}>
+                            admin@empresa.com
+                        </span>
                         <button onClick={toggleTheme} className="theme-toggle">
                             {isDarkMode ? '☀️' : '🌙'}
                         </button>
-                        <div className="user-menu-container">
-                            <button className="user-info-btn" onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}>
-                                <span className="user-avatar">👤</span>
-                                <span className="user-name">Espacio de Trabajo</span>
-                                <span className="dropdown-arrow">▼</span>
-                            </button>
-                            {isUserMenuOpen && (
-                                <div className="dropdown-menu">
-                                    <div className="dropdown-header">
-                                        <strong>Tu Perfil</strong>
-                                        <span>admin@empresa.com</span>
-                                    </div>
-                                    <hr className="dropdown-divider"/>
-                                    <button className="dropdown-item">⚙️ Configuración</button>
-                                    <button className="dropdown-item">💳 Facturación</button>
-                                    <hr className="dropdown-divider"/>
-                                    <button onClick={handleLogout} className="dropdown-item text-danger">🚪 Cerrar Sesión</button>
-                                </div>
-                            )}
-                        </div>
                     </div>
                 </header>
 
                 <div className="content-container">
                     <section className="prompt-section">
                         <div className="section-header">
-                            <h3 className="section-title">Agendamiento Rápido</h3>
+                            <h3 className="section-title">Asistente de Agendamiento IA</h3>
                         </div>
                         <div className="prompt-box">
                             <textarea
-                                placeholder="Ej: Programa una revisión trimestral el viernes a las 10:00 AM..."
+                                placeholder="Ej: Programa una revisión trimestral con el equipo el viernes a las 10:00 AM..."
                                 value={promptText}
                                 onChange={(e) => setPromptText(e.target.value)}
                                 className="prompt-textarea"
                             />
                             <div className="prompt-actions">
-                                <span>Procesamiento automático de texto</span>
+                                <span>Procesamiento de Lenguaje Natural</span>
                                 <button
                                     className="primary-btn"
                                     onClick={handlePromptSubmit}
                                     disabled={isProcessingPrompt}
                                 >
-                                    {isProcessingPrompt ? 'Procesando...' : 'Procesar'}
+                                    {isProcessingPrompt ? 'Procesando...' : 'Autocompletar Evento'}
                                 </button>
                             </div>
                         </div>
@@ -358,7 +394,7 @@ export default function Dashboard() {
 
                     <section className="calendar-section">
                         <div className="section-header">
-                            <h3 className="section-title">Calendario Mensual</h3>
+                            <h3 className="section-title">Calendario Corporativo</h3>
                         </div>
                         <div className="calendar-wrapper">
                             <Calendar
@@ -387,6 +423,7 @@ export default function Dashboard() {
                 </div>
             </main>
 
+            {/* Modal para Visualizar Detalles del Evento */}
             {isViewModalOpen && selectedEventInfo && (
                 <div className="modal-overlay">
                     <div className="modal-container" style={{ maxWidth: '480px' }}>
@@ -426,12 +463,22 @@ export default function Dashboard() {
                                 </div>
                             )}
 
+                            {/* Botón de Contexto Actualizado */}
+                            <button
+                                type="button"
+                                className="primary-btn"
+                                style={{ width: '100%', marginTop: '1.5rem', backgroundColor: '#334155' }}
+                                onClick={handleOpenTimeline}
+                            >
+                                📂 Centro de Contexto y Evidencias
+                            </button>
+
                             <div className="modal-actions-spaced" style={{ marginTop: '1.5rem' }}>
                                 <button type="button" onClick={handleDeleteEvent} className="delete-btn">
-                                    Eliminar
+                                    Eliminar Evento
                                 </button>
                                 <button type="button" onClick={handleEditClick} className="confirm-btn">
-                                    Editar
+                                    Editar Detalles
                                 </button>
                             </div>
                         </div>
@@ -439,21 +486,80 @@ export default function Dashboard() {
                 </div>
             )}
 
+            {/* Modal para el Timeline/Contexto */}
+            {isTimelineModalOpen && selectedEventInfo && (
+                <div className="modal-overlay">
+                    <div className="modal-container" style={{ maxWidth: '550px' }}>
+                        <div className="modal-header">
+                            <h3 className="modal-title">Espacio de Trabajo: {selectedEventInfo.title}</h3>
+                            <button onClick={() => setIsTimelineModalOpen(false)} className="close-btn">✕</button>
+                        </div>
+                        <div className="modal-form">
+
+                            {/* ÁREA DE VISUALIZACIÓN DEL CONTEXTO (Historial) */}
+                            <div style={{ maxHeight: '250px', overflowY: 'auto', marginBottom: '1.5rem', padding: '15px', backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc', borderRadius: '8px', border: '1px solid', borderColor: isDarkMode ? '#334155' : '#e2e8f0' }}>
+                                {timelineEntries.length === 0 ? (
+                                    <p style={{ color: '#64748b', fontSize: '14px', textAlign: 'center', margin: 0 }}>Aún no hay minutas ni evidencias registradas.</p>
+                                ) : (
+                                    timelineEntries.map(entry => (
+                                        <div key={entry.id} style={{ backgroundColor: isDarkMode ? '#0f172a' : 'white', padding: '12px', borderRadius: '6px', marginBottom: '10px', border: '1px solid', borderColor: isDarkMode ? '#334155' : '#cbd5e1' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#64748b', marginBottom: '8px' }}>
+                                                <strong style={{ color: isDarkMode ? '#cbd5e1' : '#334155' }}>{entry.authorName || 'Usuario'}</strong>
+                                                <span>{new Date(entry.createdAt).toLocaleString()}</span>
+                                            </div>
+                                            <p style={{ fontSize: '14px', margin: 0, color: isDarkMode ? '#f1f5f9' : '#334155', whiteSpace: 'pre-wrap' }}>{entry.content}</p>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+
+                            <div className="form-group">
+                                <label className="modal-label">Añadir acta, acuerdo o link asíncrono</label>
+                                <textarea
+                                    className="modal-input"
+                                    style={{ minHeight: '100px', resize: 'vertical' }}
+                                    placeholder="Escribe notas de la reunión o adjunta links de Drive..."
+                                    value={timelineContent}
+                                    onChange={(e) => setTimelineContent(e.target.value)}
+                                />
+                            </div>
+
+                            <div className="modal-actions-spaced" style={{ justifyContent: 'flex-end', marginTop: '1.5rem' }}>
+                                <div className="action-buttons-group">
+                                    <button type="button" onClick={() => setIsTimelineModalOpen(false)} className="cancel-btn">
+                                        Volver
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={handleAddTimelineEntry}
+                                        className="confirm-btn"
+                                        disabled={isSubmitting}
+                                    >
+                                        {isSubmitting ? 'Guardando...' : 'Publicar en el Contexto'}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal de Crear/Editar Evento */}
             {isModalOpen && (
                 <div className="modal-overlay">
                     <div className="modal-container">
                         <div className="modal-header">
-                            <h3 className="modal-title">{selectedEventId ? 'Editar Evento' : 'Agendar Evento'}</h3>
+                            <h3 className="modal-title">{selectedEventId ? 'Modificar Evento' : 'Agendar Nueva Reunión'}</h3>
                             <button onClick={() => setIsModalOpen(false)} className="close-btn">✕</button>
                         </div>
                         <form onSubmit={handleSaveEvent} className="modal-form">
                             <div className="form-group">
-                                <label className="modal-label">Título</label>
+                                <label className="modal-label">Asunto / Título</label>
                                 <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} className="modal-input" required />
                             </div>
                             <div className="form-group">
-                                <label className="modal-label">Descripción</label>
-                                <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="modal-input" style={{ minHeight: '60px', resize: 'vertical' }} placeholder="Agrega notas o links de la reunión..." />
+                                <label className="modal-label">Orden del Día (Opcional)</label>
+                                <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="modal-input" style={{ minHeight: '60px', resize: 'vertical' }} placeholder="Temas a tratar..." />
                             </div>
                             <div className="form-row">
                                 <div className="form-group">
@@ -467,7 +573,7 @@ export default function Dashboard() {
                             </div>
                             <div className="form-row">
                                 <div className="form-group">
-                                    <label className="modal-label">Recurrencia</label>
+                                    <label className="modal-label">Repetir</label>
                                     <select value={recurrence} onChange={(e) => setRecurrence(e.target.value)} className="modal-input">
                                         <option>Ninguna</option>
                                         <option>Diaria</option>
@@ -475,8 +581,8 @@ export default function Dashboard() {
                                     </select>
                                 </div>
                                 <div className="form-group">
-                                    <label className="modal-label">Asignar a (opcional)</label>
-                                    <input type="text" placeholder="Buscar empleado..." value={assignee} onChange={(e) => setAssignee(e.target.value)} className="modal-input" />
+                                    <label className="modal-label">Asignar a Miembro</label>
+                                    <input type="text" placeholder="Ej: dev@empresa.com" value={assignee} onChange={(e) => setAssignee(e.target.value)} className="modal-input" />
                                 </div>
                             </div>
 
@@ -484,7 +590,7 @@ export default function Dashboard() {
                                 <div className="action-buttons-group">
                                     <button type="button" onClick={() => setIsModalOpen(false)} className="cancel-btn">Cancelar</button>
                                     <button type="submit" className="confirm-btn" disabled={isSubmitting}>
-                                        {isSubmitting ? 'Guardando...' : (selectedEventId ? 'Actualizar' : 'Crear')}
+                                        {isSubmitting ? 'Guardando...' : (selectedEventId ? 'Actualizar Reunión' : 'Programar Reunión')}
                                     </button>
                                 </div>
                             </div>
@@ -493,18 +599,19 @@ export default function Dashboard() {
                 </div>
             )}
 
+            {/* Modal de Organización (Se mantiene igual) */}
             {isOrgModalOpen && (
                 <div className="modal-overlay">
                     <div className="modal-container org-modal">
                         <div className="modal-header">
-                            <h3 className="modal-title">Gestión de Organización</h3>
+                            <h3 className="modal-title">Gestión del Workspace</h3>
                             <button onClick={() => setIsOrgModalOpen(false)} className="close-btn">✕</button>
                         </div>
 
                         <div className="org-split-layout">
                             <div className="org-half">
                                 <div className="org-half-header">
-                                    <h4>Crear Nueva</h4>
+                                    <h4>Crear Nueva Organización</h4>
                                     <p>Inicia un espacio de trabajo para tu equipo desde cero.</p>
                                 </div>
                                 <div className="org-form-group">
@@ -524,7 +631,7 @@ export default function Dashboard() {
 
                             <div className="org-half">
                                 <div className="org-half-header">
-                                    <h4>Unirse a una Existente</h4>
+                                    <h4>Unirse a un Equipo</h4>
                                     <p>Ingresa el código que te proporcionó el administrador.</p>
                                 </div>
                                 <div className="org-form-group">
