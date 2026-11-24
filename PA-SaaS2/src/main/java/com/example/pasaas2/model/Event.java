@@ -1,9 +1,26 @@
 package com.example.pasaas2.model;
 
-import jakarta.persistence.*;
-import lombok.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.Table;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
+
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Entity
@@ -27,7 +44,12 @@ public class Event {
     @JoinColumn(name = "organization_id")
     private Organization organization;
 
-    @ManyToOne(fetch = FetchType.LAZY, cascade = CascadeType.ALL)
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    @Builder.Default
+    private EventScope scope = EventScope.PERSONAL;
+
+    @ManyToOne(fetch = FetchType.LAZY, cascade = jakarta.persistence.CascadeType.ALL)
     @JoinColumn(name = "recurrence_rule_id")
     private RecurrenceRule recurrenceRule;
 
@@ -47,9 +69,17 @@ public class Event {
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 
-    @OneToMany(mappedBy = "event", cascade = CascadeType.ALL, orphanRemoval = true)
-    private java.util.List<TimelineEntry> timelineEntries;
+    @OneToMany(
+            mappedBy = "event",
+            cascade = jakarta.persistence.CascadeType.ALL,
+            orphanRemoval = true
+    )
+    private List<TimelineEntry> timelineEntries;
 
-    @OneToMany(mappedBy = "event", cascade = CascadeType.ALL, orphanRemoval = true)
-    private java.util.List<ChecklistItem> checklistItems;
+    @OneToMany(
+            mappedBy = "event",
+            cascade = jakarta.persistence.CascadeType.ALL,
+            orphanRemoval = true
+    )
+    private List<ChecklistItem> checklistItems;
 }

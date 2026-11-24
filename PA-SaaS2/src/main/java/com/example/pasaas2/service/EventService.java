@@ -1,21 +1,30 @@
 package com.example.pasaas2.service;
 
-import com.example.pasaas2.dto.*;
+import com.example.pasaas2.dto.AssignmentResultResponse;
+import com.example.pasaas2.dto.EventAssignRequest;
+import com.example.pasaas2.dto.EventRequest;
+import com.example.pasaas2.dto.EventResponse;
+import com.example.pasaas2.dto.TimelineRequest;
+import com.example.pasaas2.dto.TimelineResponse;
 import com.example.pasaas2.model.Event;
 import com.example.pasaas2.model.EventAssignment;
+import com.example.pasaas2.model.EventScope;
+import com.example.pasaas2.model.Membership;
+import com.example.pasaas2.model.MembershipRole;
+import com.example.pasaas2.model.Organization;
 import com.example.pasaas2.model.RecurrenceRule;
+import com.example.pasaas2.model.TimelineEntry;
 import com.example.pasaas2.model.User;
 import com.example.pasaas2.repository.EventAssignmentRepository;
 import com.example.pasaas2.repository.EventRepository;
+import com.example.pasaas2.repository.MembershipRepository;
+import com.example.pasaas2.repository.OrganizationRepository;
 import com.example.pasaas2.repository.RecurrenceRuleRepository;
+import com.example.pasaas2.repository.TimelineEntryRepository;
 import com.example.pasaas2.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.example.pasaas2.model.Membership;
-import com.example.pasaas2.model.MembershipRole;
-import com.example.pasaas2.model.Organization;
-import com.example.pasaas2.repository.MembershipRepository;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -29,192 +38,266 @@ public class EventService {
     private final EventAssignmentRepository eventAssignmentRepository;
     private final UserRepository userRepository;
     private final RecurrenceRuleRepository recurrenceRuleRepository;
-    private final GeminiAiService geminiAiService;
-    private final com.example.pasaas2.repository.TimelineEntryRepository timelineEntryRepository;
+    private final TimelineEntryRepository timelineEntryRepository;
+    private final OrganizationRepository organizationRepository;
     private final MembershipRepository membershipRepository;
 
     @Transactional
-    public EventResponse createPersonalEvent(EventRequest request, User currentUser) {
-
-        if (request.getEndTime().isBefore(request.getStartTime())) {
-            throw new IllegalArgumentException("La fecha de fin no puede ser anterior a la fecha de inicio");
+    public EventResponse createEvent(
+            EventRequest request,
+            User currentUser
+    ) {
+        if (
+                request.getEndTime()
+                        .isBefore(request.getStartTime())
+        ) {
+            throw new IllegalArgumentException(
+                    "La fecha de fin no puede ser anterior "
+                            + "a la fecha de inicio"
+            );
         }
 
-        Event event = Event.builder()
-                .title(request.getTitle())
-                .description(request.getDescription())
-                .startTime(request.getStartTime())
-                .endTime(request.getEndTime())
-                .createdBy(currentUser)
-                .build();
+        Organization organization = null;
+
+        if (
+                request.getScope()
+                        == EventScope.CORPORATE
+        ) {
+            if (request.getOrganizationId() == null) {
+                throw new IllegalArgumentException(
+                        "El evento corporativo requiere una organización"
+                );
+            }
+
+            organization =
+                    organizationRepository.findById(
+                                    request.getOrganizationId()
+                            )
+                            .orElseThrow(() ->
+                                    new IllegalArgumentException(
+                                            "Organización no encontrada"
+                                    ));
+
+            Membership membership =
+                    membershipRepository
+                            .findByUserAndOrganization(
+                                    currentUser,
+                                    organization
+                            )
+                            .orElseThrow(() ->
+                                    new IllegalArgumentException(
+                                            "No perteneces a esta organización"
+                                    ));
+
+            if (
+                    membership.getRole()
+                            != MembershipRole.OWNER
+                            && membership.getRole()
+                            != MembershipRole.ADMIN
+            ) {
+                throw new IllegalArgumentException(
+                        "Solo el propietario o un administrador "
+                                + "puede crear eventos corporativos"
+                );
+            }
+        }
+
+        Event event =
+                Event.builder()
+                        .title(request.getTitle())
+                        .description(request.getDescription())
+                        .startTime(request.getStartTime())
+                        .endTime(request.getEndTime())
+                        .createdBy(currentUser)
+                        .scope(request.getScope())
+                        .organization(organization)
+                        .build();
 
         event = eventRepository.save(event);
 
-        boolean conflict = eventAssignmentRepository.hasOverlappingEvents(
-                currentUser,
-                request.getStartTime(),
-                request.getEndTime()
-        );
+        List<User> usersToAssign =
+                new ArrayList<>();
 
-        EventAssignment assignment = EventAssignment.builder()
-                .event(event)
-                .user(currentUser)
-                .hasConflict(conflict)
-                .build();
+        if (
+                event.getScope()
+                        == EventScope.PERSONAL
+        ) {
+            usersToAssign.add(currentUser);
+        } else {
+            usersToAssign.add(currentUser);
 
-        eventAssignmentRepository.save(assignment);
+            for (
+                    UUID assignedUserId
+                    : request.getAssignedUserIds()
+            ) {
+                User assignedUser =
+                        userRepository.findById(
+                                        assignedUserId
+                                )
+                                .orElse(null);
+
+                if (assignedUser == null) {
+                    continue;
+                }
+
+                boolean member =
+                        membershipRepository
+                                .existsByUserAndOrganization(
+                                        assignedUser,
+                                        organization
+                                );
+
+                if (
+                        member
+                                && usersToAssign
+                                .stream()
+                                .noneMatch(
+                                        user ->
+                                                user.getId()
+                                                        .equals(
+                                                                assignedUserId
+                                                        )
+                                )
+                ) {
+                    usersToAssign.add(
+                            assignedUser
+                    );
+                }
+            }
+        }
+
+        for (User assignedUser : usersToAssign) {
+            boolean conflict =
+                    eventAssignmentRepository
+                            .hasOverlappingEvents(
+                                    assignedUser,
+                                    request.getStartTime(),
+                                    request.getEndTime()
+                            );
+
+            EventAssignment assignment =
+                    EventAssignment.builder()
+                            .event(event)
+                            .user(assignedUser)
+                            .hasConflict(conflict)
+                            .build();
+
+            eventAssignmentRepository.save(
+                    assignment
+            );
+        }
 
         if (request.getRecurrence() != null) {
-            RecurrenceRule rule = RecurrenceRule.builder()
-                    .event(event)
-                    .frequency(request.getRecurrence().getFrequency())
-                    .intervalCount(request.getRecurrence().getIntervalCount())
-                    .untilDate(request.getRecurrence().getUntilDate())
-                    .build();
+            RecurrenceRule recurrence =
+                    RecurrenceRule.builder()
+                            .event(event)
+                            .frequency(
+                                    request
+                                            .getRecurrence()
+                                            .getFrequency()
+                            )
+                            .intervalCount(
+                                    request
+                                            .getRecurrence()
+                                            .getIntervalCount()
+                            )
+                            .untilDate(
+                                    request
+                                            .getRecurrence()
+                                            .getUntilDate()
+                            )
+                            .build();
 
-            recurrenceRuleRepository.save(rule);
+            recurrenceRuleRepository.save(
+                    recurrence
+            );
         }
+
+        boolean currentUserConflict =
+                eventAssignmentRepository
+                        .hasOverlappingEvents(
+                                currentUser,
+                                request.getStartTime(),
+                                request.getEndTime()
+                        );
 
         return EventResponse.builder()
                 .id(event.getId())
                 .title(event.getTitle())
+                .description(event.getDescription())
                 .startTime(event.getStartTime())
                 .endTime(event.getEndTime())
-                .hasConflict(conflict)
+                .hasConflict(currentUserConflict)
+                .scope(event.getScope())
+                .organizationId(
+                        organization == null
+                                ? null
+                                : organization.getId()
+                )
                 .build();
     }
 
-    @Transactional
-    public List<AssignmentResultResponse> assignEventToUsers(
-            EventAssignRequest request,
+    public List<EventResponse> getEventsForUser(
             User currentUser
     ) {
-        Event event = eventRepository.findById(request.getEventId())
-                .orElseThrow(() ->
-                        new IllegalArgumentException(
-                                "Evento no encontrado"
-                        ));
+        List<EventAssignment> assignments =
+                eventAssignmentRepository
+                        .findAllByUser(currentUser);
 
-        if (event.getOrganization() != null) {
-            Membership membership =
-                    membershipRepository.findByUserAndOrganization(
-                            currentUser,
-                            event.getOrganization()
-                    ).orElseThrow(() ->
-                            new IllegalArgumentException(
-                                    "No perteneces a esta organización"
-                            ));
+        List<EventResponse> result =
+                new ArrayList<>();
 
-            boolean isCreator =
-                    event.getCreatedBy()
-                            .getId()
-                            .equals(currentUser.getId());
+        for (EventAssignment assignment : assignments) {
+            Event event =
+                    assignment.getEvent();
 
-            boolean canManage =
-                    membership.getRole() == MembershipRole.OWNER ||
-                            membership.getRole() == MembershipRole.ADMIN;
+            String recurrenceFrequency =
+                    null;
 
-            if (!isCreator && !canManage) {
-                throw new IllegalArgumentException(
-                        "No tienes permisos para asignar usuarios"
-                );
-            }
-        } else if (!event.getCreatedBy()
-                .getId()
-                .equals(currentUser.getId())) {
-
-            throw new IllegalArgumentException(
-                    "No tienes permisos para asignar usuarios"
-            );
-        }
-
-        List<AssignmentResultResponse> results = new ArrayList<>();
-        List<EventAssignment> assignmentsToSave = new ArrayList<>();
-
-        for (UUID targetUserId : request.getUserIds()) {
-            User targetUser =
-                    userRepository.findById(targetUserId)
-                            .orElse(null);
-
-            if (targetUser == null) {
-                results.add(
-                        AssignmentResultResponse.builder()
-                                .userId(targetUserId)
-                                .success(false)
-                                .build()
-                );
-                continue;
+            if (
+                    event.getRecurrenceRule()
+                            != null
+            ) {
+                recurrenceFrequency =
+                        event
+                                .getRecurrenceRule()
+                                .getFrequency();
             }
 
-            if (event.getOrganization() != null) {
-                boolean isOrganizationMember =
-                        membershipRepository
-                                .existsByUserAndOrganization(
-                                        targetUser,
-                                        event.getOrganization()
-                                );
-
-                if (!isOrganizationMember) {
-                    results.add(
-                            AssignmentResultResponse.builder()
-                                    .userId(targetUserId)
-                                    .success(false)
-                                    .build()
-                    );
-                    continue;
-                }
-            }
-            boolean conflict =
-                    eventAssignmentRepository.hasOverlappingEvents(
-                            targetUser,
-                            event.getStartTime(),
-                            event.getEndTime()
-                    );
-            EventAssignment assignment =
-                    EventAssignment.builder()
-                            .event(event)
-                            .user(targetUser)
-                            .hasConflict(conflict)
-                            .build();
-
-            assignmentsToSave.add(assignment);
-            results.add(
-                    AssignmentResultResponse.builder()
-                            .userId(targetUser.getId())
-                            .userEmail(targetUser.getEmail())
-                            .hasConflict(conflict)
-                            .success(true)
+            result.add(
+                    EventResponse.builder()
+                            .id(event.getId())
+                            .title(event.getTitle())
+                            .description(
+                                    event.getDescription()
+                            )
+                            .startTime(
+                                    event.getStartTime()
+                            )
+                            .endTime(
+                                    event.getEndTime()
+                            )
+                            .hasConflict(
+                                    assignment
+                                            .getHasConflict()
+                            )
+                            .recurrenceFrequency(
+                                    recurrenceFrequency
+                            )
+                            .scope(event.getScope())
+                            .organizationId(
+                                    event.getOrganization()
+                                            == null
+                                            ? null
+                                            : event
+                                            .getOrganization()
+                                            .getId()
+                            )
                             .build()
             );
         }
-        eventAssignmentRepository.saveAll(assignmentsToSave);
-        return results;
-    }
 
-    public List<EventResponse> getEventsForUser(User currentUser) {
-        List<EventAssignment> assignments = eventAssignmentRepository.findAllByUser(currentUser);
-        List<EventResponse> responses = new ArrayList<>();
-
-        for (EventAssignment assignment : assignments) {
-            Event event = assignment.getEvent();
-
-            String frequency = null;
-            if (event.getRecurrenceRule() != null) {
-                frequency = event.getRecurrenceRule().getFrequency();
-            }
-
-            responses.add(EventResponse.builder()
-                    .id(event.getId())
-                    .title(event.getTitle())
-                    .description(event.getDescription())
-                    .startTime(event.getStartTime())
-                    .endTime(event.getEndTime())
-                    .hasConflict(assignment.getHasConflict())
-                    .recurrenceFrequency(frequency)
-                    .build());
-        }
-
-        return responses;
+        return result;
     }
 
     @Transactional
@@ -230,24 +313,40 @@ public class EventService {
                                         "Evento no encontrado"
                                 ));
 
-        if (request.getEndTime()
-                .isBefore(request.getStartTime())) {
+        if (
+                event.getScope()
+                        == EventScope.PERSONAL
+        ) {
+            if (
+                    event.getCreatedBy()
+                            .getId()
+                            .equals(currentUser.getId())
+                            == false
+            ) {
+                throw new IllegalArgumentException(
+                        "No puedes modificar este evento personal"
+                );
+            }
+        } else {
+            Organization organization =
+                    event.getOrganization();
 
-            throw new IllegalArgumentException(
-                    "La fecha de fin no puede ser anterior "
-                            + "a la fecha de inicio"
-            );
-        }
+            if (organization == null) {
+                throw new IllegalArgumentException(
+                        "El evento corporativo no tiene organización"
+                );
+            }
 
-        if (event.getOrganization() != null) {
             Membership membership =
-                    membershipRepository.findByUserAndOrganization(
-                            currentUser,
-                            event.getOrganization()
-                    ).orElseThrow(() ->
-                            new IllegalArgumentException(
-                                    "No perteneces a esta organización"
-                            ));
+                    membershipRepository
+                            .findByUserAndOrganization(
+                                    currentUser,
+                                    organization
+                            )
+                            .orElseThrow(() ->
+                                    new IllegalArgumentException(
+                                            "No tienes permisos sobre este evento"
+                                    ));
 
             boolean isCreator =
                     event.getCreatedBy()
@@ -255,21 +354,26 @@ public class EventService {
                             .equals(currentUser.getId());
 
             boolean canManage =
-                    membership.getRole() == MembershipRole.OWNER ||
-                            membership.getRole() == MembershipRole.ADMIN;
+                    membership.getRole()
+                            == MembershipRole.OWNER
+                            || membership.getRole()
+                            == MembershipRole.ADMIN;
 
             if (!isCreator && !canManage) {
                 throw new IllegalArgumentException(
                         "No tienes permisos sobre este evento"
                 );
             }
-        } else {
-            eventAssignmentRepository
-                    .findByEventAndUser(event, currentUser)
-                    .orElseThrow(() ->
-                            new IllegalArgumentException(
-                                    "No tienes permisos sobre este evento"
-                            ));
+        }
+
+        if (
+                request.getEndTime()
+                        .isBefore(request.getStartTime())
+        ) {
+            throw new IllegalArgumentException(
+                    "La fecha de fin no puede ser anterior "
+                            + "a la fecha de inicio"
+            );
         }
 
         event.setTitle(request.getTitle());
@@ -279,23 +383,36 @@ public class EventService {
 
         event = eventRepository.save(event);
 
-        boolean conflict =
-                eventAssignmentRepository.hasOverlappingEvents(
-                        currentUser,
-                        request.getStartTime(),
-                        request.getEndTime()
-                );
+        EventAssignment assignment =
+                eventAssignmentRepository
+                        .findByEventAndUser(
+                                event,
+                                currentUser
+                        )
+                        .orElseThrow(() ->
+                                new IllegalArgumentException(
+                                        "No tienes una asignación sobre este evento"
+                                ));
 
-        eventAssignmentRepository
-                .findByEventAndUser(event, currentUser)
-                .ifPresent(assignment -> {
-                    assignment.setHasConflict(conflict);
-                    eventAssignmentRepository.save(assignment);
-                });
+        boolean conflict =
+                eventAssignmentRepository
+                        .hasOverlappingEvents(
+                                currentUser,
+                                request.getStartTime(),
+                                request.getEndTime()
+                        );
+
+        assignment.setHasConflict(conflict);
+        eventAssignmentRepository.save(
+                assignment
+        );
 
         String frequency = null;
 
-        if (event.getRecurrenceRule() != null) {
+        if (
+                event.getRecurrenceRule()
+                        != null
+        ) {
             frequency =
                     event
                             .getRecurrenceRule()
@@ -310,6 +427,15 @@ public class EventService {
                 .endTime(event.getEndTime())
                 .hasConflict(conflict)
                 .recurrenceFrequency(frequency)
+                .scope(event.getScope())
+                .organizationId(
+                        event.getOrganization()
+                                == null
+                                ? null
+                                : event
+                                .getOrganization()
+                                .getId()
+                )
                 .build();
     }
 
@@ -325,103 +451,229 @@ public class EventService {
                                         "Evento no encontrado"
                                 ));
 
-        if (event.getOrganization() != null) {
+        if (
+                event.getScope()
+                        == EventScope.PERSONAL
+        ) {
+            if (
+                    event.getCreatedBy()
+                            .getId()
+                            .equals(currentUser.getId())
+                            == false
+            ) {
+                throw new IllegalArgumentException(
+                        "No puedes eliminar este evento personal"
+                );
+            }
+        } else {
             Membership membership =
-                    membershipRepository.findByUserAndOrganization(
-                            currentUser,
-                            event.getOrganization()
-                    ).orElseThrow(() ->
-                            new IllegalArgumentException(
-                                    "No perteneces a esta organización"
-                            ));
-
-            boolean canManage =
-                    membership.getRole() == MembershipRole.OWNER ||
-                            membership.getRole() == MembershipRole.ADMIN;
+                    membershipRepository
+                            .findByUserAndOrganization(
+                                    currentUser,
+                                    event.getOrganization()
+                            )
+                            .orElseThrow(() ->
+                                    new IllegalArgumentException(
+                                            "No tienes permisos sobre este evento"
+                                    ));
 
             boolean isCreator =
                     event.getCreatedBy()
                             .getId()
                             .equals(currentUser.getId());
 
-            if (canManage || isCreator) {
-                eventAssignmentRepository.deleteByEvent(event);
-                recurrenceRuleRepository.deleteByEvent(event);
-                eventRepository.delete(event);
-                return;
-            }
+            boolean canManage =
+                    membership.getRole()
+                            == MembershipRole.OWNER
+                            || membership.getRole()
+                            == MembershipRole.ADMIN;
 
-            EventAssignment assignment =
-                    eventAssignmentRepository
-                            .findByEventAndUser(event, currentUser)
-                            .orElseThrow(() ->
-                                    new IllegalArgumentException(
-                                            "No tienes permisos para "
-                                                    + "eliminar este evento"
-                                    ));
-
-            eventAssignmentRepository.delete(assignment);
-            return;
-        }
-
-        EventAssignment assignment =
-                eventAssignmentRepository
-                        .findByEventAndUser(event, currentUser)
-                        .orElseThrow(() ->
-                                new IllegalArgumentException(
-                                        "No tienes permisos para "
-                                                + "eliminar este evento"
-                                ));
-
-        if (event.getCreatedBy()
-                .getId()
-                .equals(currentUser.getId())) {
-
-            eventAssignmentRepository.deleteByEvent(event);
-            recurrenceRuleRepository.deleteByEvent(event);
-            eventRepository.delete(event);
-        } else {
-            eventAssignmentRepository.delete(assignment);
-        }
-    }
-
-    public EventRequest previewEventFromText(EventPromptRequest request) {
-        return geminiAiService.parseEventFromText(request.getPrompt());
-    }
-
-    @Transactional
-    public TimelineResponse addTimelineEntry(UUID eventId, TimelineRequest request, User currentUser) {
-        Event event = eventRepository.findById(eventId)
-                .orElseThrow(() -> new IllegalArgumentException("Evento no encontrado"));
-
-        boolean isCreator = event.getCreatedBy().getId().equals(currentUser.getId());
-        boolean isAssigned = eventAssignmentRepository.findByEventAndUser(event, currentUser).isPresent();
-
-        if (!isCreator && !isAssigned) {
-            throw new IllegalArgumentException("No tienes permisos para participar en este evento");
-        }
-        if (event.getOrganization() != null) {
-            boolean isMember =
-                    membershipRepository.existsByUserAndOrganization(
-                            currentUser,
-                            event.getOrganization()
-                    );
-
-            if (!isMember) {
+            if (!isCreator && !canManage) {
                 throw new IllegalArgumentException(
-                        "No tienes permisos para participar "
-                                + "en este evento"
+                        "No tienes permisos sobre este evento"
                 );
             }
         }
 
+        eventAssignmentRepository.deleteByEvent(
+                event
+        );
 
-        com.example.pasaas2.model.TimelineEntry entry = com.example.pasaas2.model.TimelineEntry.builder()
-                .event(event)
-                .author(currentUser)
-                .entryType(request.getEntryType())
-                .content(request.getContent())
-                .build();
+        if (
+                event.getRecurrenceRule()
+                        != null
+        ) {
+            recurrenceRuleRepository.deleteByEvent(
+                    event
+            );
+        }
+
+        eventRepository.delete(event);
+    }
+
+    @Transactional
+    public List<AssignmentResultResponse> assignEventToUsers(
+            EventAssignRequest request,
+            User currentUser
+    ) {
+        Event event =
+                eventRepository.findById(
+                                request.getEventId()
+                        )
+                        .orElseThrow(() ->
+                                new IllegalArgumentException(
+                                        "Evento no encontrado"
+                                ));
+
+        if (
+                event.getScope()
+                        != EventScope.CORPORATE
+        ) {
+            throw new IllegalArgumentException(
+                    "Solo los eventos corporativos pueden asignarse"
+            );
+        }
+
+        Membership membership =
+                membershipRepository
+                        .findByUserAndOrganization(
+                                currentUser,
+                                event.getOrganization()
+                        )
+                        .orElseThrow(() ->
+                                new IllegalArgumentException(
+                                        "No perteneces a esta organización"
+                                ));
+
+        boolean canManage =
+                membership.getRole()
+                        == MembershipRole.OWNER
+                        || membership.getRole()
+                        == MembershipRole.ADMIN;
+
+        boolean isCreator =
+                event.getCreatedBy()
+                        .getId()
+                        .equals(currentUser.getId());
+
+        if (!canManage && !isCreator) {
+            throw new IllegalArgumentException(
+                    "No tienes permisos para asignar este evento"
+            );
+        }
+
+        List<AssignmentResultResponse> result =
+                new ArrayList<>();
+
+        for (
+                UUID targetUserId
+                : request.getUserIds()
+        ) {
+            User targetUser =
+                    userRepository.findById(
+                                    targetUserId
+                            )
+                            .orElse(null);
+
+            if (targetUser == null) {
+                result.add(
+                        AssignmentResultResponse.builder()
+                                .userId(targetUserId)
+                                .success(false)
+                                .build()
+                );
+                continue;
+            }
+
+            boolean isMember =
+                    membershipRepository
+                            .existsByUserAndOrganization(
+                                    targetUser,
+                                    event.getOrganization()
+                            );
+
+            if (!isMember) {
+                result.add(
+                        AssignmentResultResponse.builder()
+                                .userId(targetUserId)
+                                .success(false)
+                                .build()
+                );
+                continue;
+            }
+
+            boolean conflict =
+                    eventAssignmentRepository
+                            .hasOverlappingEvents(
+                                    targetUser,
+                                    event.getStartTime(),
+                                    event.getEndTime()
+                            );
+
+            EventAssignment assignment =
+                    EventAssignment.builder()
+                            .event(event)
+                            .user(targetUser)
+                            .hasConflict(conflict)
+                            .build();
+
+            eventAssignmentRepository.save(
+                    assignment
+            );
+
+            result.add(
+                    AssignmentResultResponse.builder()
+                            .userId(targetUser.getId())
+                            .userEmail(targetUser.getEmail())
+                            .hasConflict(conflict)
+                            .success(true)
+                            .build()
+            );
+        }
+
+        return result;
+    }
+
+    @Transactional
+    public TimelineResponse addTimelineEntry(
+            UUID eventId,
+            TimelineRequest request,
+            User currentUser
+    ) {
+        Event event =
+                eventRepository.findById(eventId)
+                        .orElseThrow(() ->
+                                new IllegalArgumentException(
+                                        "Evento no encontrado"
+                                ));
+
+        boolean isCreator =
+                event.getCreatedBy()
+                        .getId()
+                        .equals(currentUser.getId());
+
+        boolean isAssigned =
+                eventAssignmentRepository
+                        .findByEventAndUser(
+                                event,
+                                currentUser
+                        )
+                        .isPresent();
+
+        if (!isCreator && !isAssigned) {
+            throw new IllegalArgumentException(
+                    "No tienes permisos para participar "
+                            + "en este evento"
+            );
+        }
+
+        TimelineEntry entry =
+                TimelineEntry.builder()
+                        .event(event)
+                        .author(currentUser)
+                        .entryType(request.getEntryType())
+                        .content(request.getContent())
+                        .build();
 
         timelineEntryRepository.save(entry);
 
@@ -434,39 +686,55 @@ public class EventService {
                 .build();
     }
 
-    public List<TimelineResponse> getTimelineForEvent(UUID eventId, User currentUser) {
-        Event event = eventRepository.findById(eventId)
-                .orElseThrow(() -> new IllegalArgumentException("Evento no encontrado"));
+    public List<TimelineResponse> getTimelineForEvent(
+            UUID eventId,
+            User currentUser
+    ) {
+        Event event =
+                eventRepository.findById(eventId)
+                        .orElseThrow(() ->
+                                new IllegalArgumentException(
+                                        "Evento no encontrado"
+                                ));
 
-        boolean isCreator = event.getCreatedBy().getId().equals(currentUser.getId());
-        boolean isAssigned = eventAssignmentRepository.findByEventAndUser(event, currentUser).isPresent();
+        boolean isCreator =
+                event.getCreatedBy()
+                        .getId()
+                        .equals(currentUser.getId());
+
+        boolean isAssigned =
+                eventAssignmentRepository
+                        .findByEventAndUser(
+                                event,
+                                currentUser
+                        )
+                        .isPresent();
 
         if (!isCreator && !isAssigned) {
-            throw new IllegalArgumentException("No tienes permisos para ver el contexto de este evento");
-        }
-        if (event.getOrganization() != null) {
-            boolean isMember =
-                    membershipRepository.existsByUserAndOrganization(
-                            currentUser,
-                            event.getOrganization()
-                    );
-
-            if (!isMember) {
-                throw new IllegalArgumentException(
-                        "No tienes permisos para participar "
-                                + "en este evento"
-                );
-            }
+            throw new IllegalArgumentException(
+                    "No tienes permisos para ver "
+                            + "el contexto de este evento"
+            );
         }
 
-        return timelineEntryRepository.findByEventOrderByCreatedAtDesc(event).stream()
-                .map(entry -> TimelineResponse.builder()
-                        .id(entry.getId())
-                        .content(entry.getContent())
-                        .entryType(entry.getEntryType())
-                        .authorName(entry.getAuthor().getName())
-                        .createdAt(entry.getCreatedAt())
-                        .build())
+        return timelineEntryRepository
+                .findByEventOrderByCreatedAtDesc(event)
+                .stream()
+                .map(entry ->
+                        TimelineResponse.builder()
+                                .id(entry.getId())
+                                .content(entry.getContent())
+                                .entryType(entry.getEntryType())
+                                .authorName(
+                                        entry
+                                                .getAuthor()
+                                                .getName()
+                                )
+                                .createdAt(
+                                        entry.getCreatedAt()
+                                )
+                                .build()
+                )
                 .toList();
     }
 }

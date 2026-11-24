@@ -1,7 +1,9 @@
 package com.example.pasaas2.dto;
 
+import com.example.pasaas2.model.EventScope;
 import lombok.Builder;
 import lombok.Data;
+
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -15,4 +17,6 @@ public class EventResponse {
     private LocalDateTime endTime;
     private Boolean hasConflict;
     private String recurrenceFrequency;
+    private EventScope scope;
+    private UUID organizationId;
 }

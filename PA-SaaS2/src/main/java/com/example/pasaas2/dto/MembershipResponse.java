@@ -10,8 +10,8 @@ import java.util.UUID;
 @Data
 @Builder
 public class MembershipResponse {
-
     private UUID id;
+    private UUID organizationId;
     private MembershipRole role;
     private LocalDateTime joinedAt;
     private String organizationName;
