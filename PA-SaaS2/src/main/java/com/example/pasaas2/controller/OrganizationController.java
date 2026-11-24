@@ -1,14 +1,24 @@
 package com.example.pasaas2.controller;
 
-import com.example.pasaas2.dto.*;
+import com.example.pasaas2.dto.ApiResponse;
+import com.example.pasaas2.dto.InviteCodeRequest;
+import com.example.pasaas2.dto.JoinOrganizationRequest;
+import com.example.pasaas2.dto.MembershipResponse;
+import com.example.pasaas2.dto.OrganizationRequest;
 import com.example.pasaas2.model.Membership;
+import com.example.pasaas2.model.MembershipRole;
 import com.example.pasaas2.model.User;
 import com.example.pasaas2.service.OrganizationService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.util.UUID;
 
@@ -22,36 +32,104 @@ public class OrganizationController {
     @PostMapping
     public ResponseEntity<ApiResponse<Object>> createOrganization(
             @Valid @RequestBody OrganizationRequest request,
-            @AuthenticationPrincipal User currentUser) {
+            @AuthenticationPrincipal User currentUser
+    ) {
+        var organization =
+                organizationService.createOrganization(
+                        request,
+                        currentUser
+                );
 
-        var org = organizationService.createOrganization(request, currentUser);
-        return ResponseEntity.ok(ApiResponse.success("Organización creada exitosamente", org));
+        return ResponseEntity.ok(
+                ApiResponse.success(
+                        "Organización creada exitosamente",
+                        organization
+                )
+        );
     }
 
     @PostMapping("/{organizationId}/invite-codes")
     public ResponseEntity<ApiResponse<Object>> generateInviteCode(
             @PathVariable UUID organizationId,
-            @Valid @RequestBody InviteCodeRequest request) {
+            @Valid @RequestBody InviteCodeRequest request,
+            @AuthenticationPrincipal User currentUser
+    ) {
+        var inviteCode =
+                organizationService.generateInviteCode(
+                        organizationId,
+                        request,
+                        currentUser
+                );
 
-        var inviteCode = organizationService.generateInviteCode(organizationId, request);
-        return ResponseEntity.ok(ApiResponse.success("Código generado", inviteCode));
+        return ResponseEntity.ok(
+                ApiResponse.success(
+                        "Código generado",
+                        inviteCode
+                )
+        );
     }
 
     @PostMapping("/join")
-    public ResponseEntity<ApiResponse<MembershipResponse>> joinOrganization(
+    public ResponseEntity<ApiResponse<MembershipResponse>>
+    joinOrganization(
             @Valid @RequestBody JoinOrganizationRequest request,
-            @AuthenticationPrincipal User currentUser) {
+            @AuthenticationPrincipal User currentUser
+    ) {
+        Membership membership =
+                organizationService.joinOrganization(
+                        request,
+                        currentUser
+                );
 
-        Membership membership = organizationService.joinOrganization(request, currentUser);
+        MembershipRole role = membership.getRole();
 
-        MembershipResponse response = MembershipResponse.builder()
-                .id(membership.getId())
-                .role(membership.getRole())
-                .joinedAt(membership.getJoinedAt())
-                .organizationName(membership.getOrganization().getName())
-                .userEmail(membership.getUser().getEmail())
-                .build();
+        MembershipResponse response =
+                MembershipResponse.builder()
+                        .id(membership.getId())
+                        .role(role)
+                        .owner(role == MembershipRole.OWNER)
+                        .canManageOrganization(
+                                role == MembershipRole.OWNER ||
+                                        role == MembershipRole.ADMIN
+                        )
+                        .canManageEvents(
+                                role == MembershipRole.OWNER ||
+                                        role == MembershipRole.ADMIN
+                        )
+                        .joinedAt(membership.getJoinedAt())
+                        .organizationName(
+                                membership
+                                        .getOrganization()
+                                        .getName()
+                        )
+                        .userEmail(
+                                membership
+                                        .getUser()
+                                        .getEmail()
+                        )
+                        .build();
 
-        return ResponseEntity.ok(ApiResponse.success("Te has unido a la organización exitosamente", response));
+        return ResponseEntity.ok(
+                ApiResponse.success(
+                        "Te has unido a la organización exitosamente",
+                        response
+                )
+        );
+    }
+
+    @GetMapping("/{organizationId}/members")
+    public ResponseEntity<ApiResponse<Object>> getMembers(
+            @PathVariable UUID organizationId,
+            @AuthenticationPrincipal User currentUser
+    ) {
+        return ResponseEntity.ok(
+                ApiResponse.success(
+                        "Miembros obtenidos",
+                        organizationService.getMembers(
+                                organizationId,
+                                currentUser
+                        )
+                )
+        );
     }
 }
