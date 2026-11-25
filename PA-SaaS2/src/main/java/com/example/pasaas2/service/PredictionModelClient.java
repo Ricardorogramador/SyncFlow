@@ -1,5 +1,7 @@
 package com.example.pasaas2.service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.core.io.ByteArrayResource;
@@ -9,12 +11,15 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.MultipartBodyBuilder;
 import org.springframework.stereotype.Service;
+import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
+import java.net.http.HttpClient;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 
 import java.io.IOException;
 import java.util.Map;
@@ -25,15 +30,24 @@ public class PredictionModelClient {
 
     private static final long MAX_FILE_BYTES =
             10L * 1024L * 1024L;
+    private static final Logger log =
+            LoggerFactory.getLogger(PredictionModelClient.class);
 
     private final RestClient restClient;
+
+
 
     public PredictionModelClient(
             @Value("${prediction.service.url:http://prediction-service:8000}")
             String predictionServiceUrl
     ) {
+        HttpClient httpClient = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
+                .build();
+
         this.restClient = RestClient.builder()
                 .baseUrl(predictionServiceUrl)
+                .requestFactory(new JdkClientHttpRequestFactory(httpClient))
                 .build();
     }
 
@@ -89,36 +103,28 @@ public class PredictionModelClient {
         }
 
         try {
-            ByteArrayResource resource =
-                    new ByteArrayResource(file.getBytes()) {
-                        @Override
-                        public String getFilename() {
-                            return "upload.csv";
-                        }
-                    };
+            ByteArrayResource resource = new ByteArrayResource(file.getBytes()) {
+                @Override
+                public String getFilename() {
+                    return "upload.csv";
+                }
+            };
 
-            MultipartBodyBuilder builder =
-                    new MultipartBodyBuilder();
-
+            MultipartBodyBuilder builder = new MultipartBodyBuilder();
             builder.part("file", resource)
                     .filename("upload.csv")
-                    .contentType(MediaType.TEXT_PLAIN);
-
-            MultiValueMap<String, HttpEntity<?>> body =
-                    builder.build();
+                    .contentType(MediaType.parseMediaType("text/csv"));
 
             return restClient.post()
                     .uri(path, organizationId)
-                    .contentType(
-                            MediaType.MULTIPART_FORM_DATA
-                    )
-                    .body(body)
+                    .contentType(MediaType.MULTIPART_FORM_DATA)
+                    .body(builder.build())
                     .retrieve()
-                    .body(
-                            new ParameterizedTypeReference<>() {
-                            }
-                    );
+                    .body(new ParameterizedTypeReference<Map<String, Object>>() {});
+
         } catch (RestClientResponseException ex) {
+            log.error("Falló la llamada al servicio predictivo: {}",
+                    ex.getResponseBodyAsString(), ex);
             if (ex.getStatusCode().value() == 409) {
                 throw new ResponseStatusException(
                         HttpStatus.CONFLICT,
