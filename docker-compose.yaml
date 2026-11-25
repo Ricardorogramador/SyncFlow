@@ -28,9 +28,12 @@ services:
       - SPRING_DATASOURCE_PASSWORD=rootpassword
       - JWT_SECRET=${JWT_SECRET}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - PREDICTION_SERVICE_URL=http://prediction-service:8000
     depends_on:
       postgres:
         condition: service_healthy
+      prediction-service:
+        condition: service_started
 
   frontend:
     build: ./frontend-saas
@@ -40,5 +43,16 @@ services:
     depends_on:
       - backend
 
+  prediction-service:
+    build: ./prediction-service
+    container_name: syncflow_prediction
+    environment:
+      - MODEL_DIR=/models
+    volumes:
+      - predictive_models:/models
+    restart: unless-stopped
+
 volumes:
+  predictive_models:
   pgdata:
+

@@ -219,4 +219,49 @@ public class OrganizationController {
                 )
         );
     }
+
+    @GetMapping("/{organizationId}/membership")
+    public ResponseEntity<ApiResponse<MembershipResponse>>
+    getMyMembership(
+            @PathVariable UUID organizationId,
+            @AuthenticationPrincipal User currentUser
+    ) {
+        Membership membership =
+                organizationService.getCurrentMembership(
+                        organizationId,
+                        currentUser
+                );
+
+        MembershipRole role = membership.getRole();
+
+        MembershipResponse response =
+                MembershipResponse.builder()
+                        .id(membership.getId())
+                        .organizationId(
+                                membership.getOrganization().getId()
+                        )
+                        .role(role)
+                        .joinedAt(membership.getJoinedAt())
+                        .organizationName(
+                                membership.getOrganization().getName()
+                        )
+                        .userEmail(membership.getUser().getEmail())
+                        .owner(role == MembershipRole.OWNER)
+                        .canManageOrganization(
+                                role == MembershipRole.OWNER ||
+                                        role == MembershipRole.ADMIN
+                        )
+                        .canManageEvents(
+                                role == MembershipRole.OWNER ||
+                                        role == MembershipRole.ADMIN
+                        )
+                        .build();
+
+        return ResponseEntity.ok(
+                ApiResponse.success(
+                        "Membresía obtenida",
+                        response
+                )
+        );
+    }
 }

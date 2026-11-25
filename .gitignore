@@ -5,3 +5,7 @@
 .idea/
 .vscode/
 .DS_Store
+
+# CSVs sintéticos locales y entorno de Python
+/data/prediction/
+.venv-prediction-data/

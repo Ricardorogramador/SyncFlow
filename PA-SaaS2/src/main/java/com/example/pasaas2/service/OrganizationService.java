@@ -393,4 +393,27 @@ public class OrganizationService {
         membershipRepository.save(membership);
         membershipRepository.delete(membership);
     }
+
+    @Transactional(readOnly = true)
+    public Membership getCurrentMembership(
+            UUID organizationId,
+            User currentUser
+    ) {
+        Organization organization =
+                organizationRepository.findById(organizationId)
+                        .orElseThrow(() ->
+                                new IllegalArgumentException(
+                                        "Organización no encontrada"
+                                ));
+
+        return membershipRepository
+                .findByUserAndOrganization(
+                        currentUser,
+                        organization
+                )
+                .orElseThrow(() ->
+                        new IllegalArgumentException(
+                                "No perteneces a esta organización"
+                        ));
+    }
 }

@@ -79,6 +79,8 @@ export default function Dashboard() {
                 'active_organization_id'
             ) || ''
         );
+    const [activeOrganizationRole, setActiveOrganizationRole] =
+        useState('');
 
     const showToast = (
         message,
@@ -230,6 +232,26 @@ export default function Dashboard() {
         }
     };
 
+    const fetchCurrentMembership = async () => {
+        if (!activeOrganizationId) {
+            setActiveOrganizationRole('');
+            return;
+        }
+
+        try {
+            const response = await api.get(
+                `/organizations/${activeOrganizationId}/membership`
+            );
+
+            const role = response.data.data.role || '';
+            setActiveOrganizationRole(role);
+            localStorage.setItem('active_organization_role', role);
+        } catch (error) {
+            console.error('No se pudo consultar la membresía:', error);
+            setActiveOrganizationRole('');
+        }
+    };
+
     useEffect(() => {
         const token =
             localStorage.getItem('jwt_token');
@@ -252,6 +274,10 @@ export default function Dashboard() {
 
     useEffect(() => {
         fetchMembers();
+    }, [activeOrganizationId]);
+
+    useEffect(() => {
+        fetchCurrentMembership();
     }, [activeOrganizationId]);
 
     const toggleTheme = () => {
@@ -732,6 +758,9 @@ export default function Dashboard() {
                     organizationId
                 );
 
+                setActiveOrganizationRole('OWNER');
+                localStorage.setItem('active_organization_role', 'OWNER');
+
                 setActiveOrganizationId(
                     organizationId
                 );
@@ -790,6 +819,12 @@ export default function Dashboard() {
                 localStorage.setItem(
                     'active_organization_id',
                     membership.organizationId
+                );
+
+                setActiveOrganizationRole(membership.role || 'EMPLOYEE');
+                localStorage.setItem(
+                    'active_organization_role',
+                    membership.role || 'EMPLOYEE'
                 );
 
                 setActiveOrganizationId(
@@ -1134,6 +1169,21 @@ export default function Dashboard() {
                         {isSidebarOpen &&
                             'Facturación'}
                     </button>
+                    {activeOrganizationId &&
+                        activeOrganizationRole === 'OWNER' && (
+                            <button
+                                type="button"
+                                onClick={() =>
+                                    navigate(
+                                        `/organizations/${activeOrganizationId}/predictive-model`
+                                    )
+                                }
+                                className="nav-item"
+                            >
+                                <span className="icon">📊</span>
+                                {isSidebarOpen && 'Modelo predictivo'}
+                            </button>
+                        )}
                 </nav>
 
                 <div className="sidebar-footer">
